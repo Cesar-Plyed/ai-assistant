@@ -1,0 +1,5 @@
+{
+  "name": "Example Skill",
+  "description": "Demonstrates how to add a custom tool to the assistant.",
+  "version": "1.0"
+}
