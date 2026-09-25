@@ -13,7 +13,8 @@ from config import reload_settings, get_active_provider
 from core.logger import DevLogger
 from core.memory import load_chat, save_chat
 from core.tools import REGISTRY
-from core.tools import filesystem_tools, system_tools, browser_tools, mouse_tools
+from core.tools import filesystem_tools, system_tools, browser_tools, browser_automation, mouse_tools
+from core.providers.base_provider import RequestCancelled
 from core import skills_manager
 
 SYSTEM_INSTRUCTION_TEMPLATE = """You are an advanced desktop assistant for Windows and Linux (including KDE \
@@ -25,6 +26,14 @@ system, files, installed applications, hardware status, or the web, rather \
 than guessing.
 - Prefer the most specific tool for the job (e.g. get_hardware_status for \
 hardware questions, list_installed_applications before opening an app).
+- For anything that needs interaction with a website (searching, clicking, typing, \
+filling forms, reading pages that need JavaScript or a login), use the browser_* tools \
+one step at a time: browser_goto, then browser_read_page / browser_list_interactive_elements, \
+then browser_click / browser_fill / browser_set_checkbox / browser_select_option / \
+browser_press_key. They drive the user's automation browser, which is already logged in. \
+Use open_browser or fetch_web_page_text only to simply show or skim a page.
+- NEVER click Apply / Submit / Enviar / Postular without asking the user first. If \
+browser_click returns BLOCKED, ask for confirmation and only then retry with confirmed=true.
 - Mouse/keyboard control tools only work if the user has explicitly enabled \
 them in Settings; if a tool reports it is disabled, tell the user how to \
 enable it instead of trying repeatedly.
@@ -39,6 +48,7 @@ def _build_registry():
     filesystem_tools.register(REGISTRY)
     system_tools.register(REGISTRY)
     browser_tools.register(REGISTRY)
+    browser_automation.register(REGISTRY)
     mouse_tools.register(REGISTRY)
     skills_manager.load_enabled_skills(REGISTRY)
     return REGISTRY
@@ -76,13 +86,17 @@ class AIEngine:
         reload_settings()
         self.registry = _build_registry()
 
-    def process_message(self, user_prompt: str, save_to_memory: bool = True) -> str:
+    def process_message(self, user_prompt: str, save_to_memory: bool = True, cancel_event=None) -> str:
         self.logger.log("user_message", {"text": user_prompt})
         recent_context = load_chat(self.chat_id)
         system_instruction = SYSTEM_INSTRUCTION_TEMPLATE.format(context=recent_context)
         provider = self.get_provider_instance()
+        provider.cancel_event = cancel_event
         try:
             response_text = provider.run(user_prompt, system_instruction)
+        except RequestCancelled:
+            self.logger.log("error", {"message": "Request cancelled by user."})
+            raise
         except Exception as e:
             self.logger.log("error", {"message": str(e)})
             raise RuntimeError(f"Error from provider '{self.config_label()}': {e}")

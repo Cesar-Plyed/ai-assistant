@@ -33,7 +33,9 @@ class OpenAICompatibleProvider(BaseProvider):
 
         self.logger.log("model_request", {"provider": self.config.get("id"), "model": self.model, "prompt": user_prompt})
 
+        last_content = None
         for _ in range(self.max_iterations):
+            self._check_cancelled()
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -41,6 +43,8 @@ class OpenAICompatibleProvider(BaseProvider):
                 temperature=0.2,
             )
             message = response.choices[0].message
+            if message.content:
+                last_content = message.content
 
             if not message.tool_calls:
                 final_text = message.content or "Action completed."
@@ -55,6 +59,7 @@ class OpenAICompatibleProvider(BaseProvider):
                 except Exception:
                     fn_args = {}
 
+                self._check_cancelled()
                 self.logger.log("tool_call", {"name": fn_name, "arguments": fn_args})
                 result = self.tool_registry.call(fn_name, fn_args)
                 self.logger.log("tool_result", {"name": fn_name, "result": result})
@@ -65,4 +70,7 @@ class OpenAICompatibleProvider(BaseProvider):
                     "content": str(result),
                 })
 
+        if last_content:
+            self.logger.log("final_answer", {"text": last_content})
+            return last_content
         return "Reached the maximum number of reasoning steps without a final answer."

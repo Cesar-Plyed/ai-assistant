@@ -69,6 +69,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "dev_mode": False,
     "enable_mouse_control": False,
     "enable_browser_page_reading": True,
+    "enable_browser_automation": True,
+    "browser_mode": "attach",              # "attach" (debug browser) or "launch"
+    "browser_autostart": True,             # start the debug browser if it isn't running
+    "browser_debug_port": 9222,
+    "browser_debug_profile": "~/.job-agent-profile",
+    "require_submit_confirmation": True,
     "enabled_skills": [],
     "max_agent_iterations": 8,
     "theme": "dark",

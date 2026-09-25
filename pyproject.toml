@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools==84.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-desktop-assistant"
+version = "0.2.0"
+description = "A PyQt6 desktop assistant with provider-agnostic LLM tool execution"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Cesar Eduardo Castañeda López"},
+]
+dynamic = ["dependencies"]
+
+[project.scripts]
+ai-desktop-assistant = "main:main"
+
+[tool.setuptools]
+py-modules = ["config", "main"]
+packages = ["core", "core.providers", "core.tools", "ui"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}

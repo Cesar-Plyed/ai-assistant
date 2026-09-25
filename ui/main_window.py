@@ -1,4 +1,5 @@
 import sys
+import threading
 import markdown
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, Qt
 from PyQt6.QtWidgets import (
@@ -9,6 +10,7 @@ from PyQt6.QtWidgets import (
 import config
 from core import memory
 from core.ai_engine import AIEngine
+from core.providers.base_provider import RequestCancelled
 from core.tools.filesystem_tools import import_uploaded_file
 from ui.icons import get_icon
 from ui.dev_console import DevConsole
@@ -20,22 +22,32 @@ from ui.chat_history_widget import ChatHistoryWidget
 
 class AIWorker(QThread):
     response_ready = pyqtSignal(str, str)   # (chat_id, text)
-    error_occurred = pyqtSignal(str, str)
+    error_occurred = pyqtSignal(str, str)   # (chat_id, error message)
 
     def __init__(self, ai_engine, chat_id, prompt):
         super().__init__()
         self.ai_engine = ai_engine
         self.chat_id = chat_id
         self.prompt = prompt
-        self._is_cancelled = False
+        self.cancel_event = threading.Event()
+
+    @property
+    def was_cancelled(self) -> bool:
+        return self.cancel_event.is_set()
+
+    def cancel(self):
+        """Ask the agent loop to stop. It stops at the next step boundary."""
+        self.cancel_event.set()
 
     def run(self):
         try:
-            result = self.ai_engine.process_message(self.prompt)
-            if not self._is_cancelled:
+            result = self.ai_engine.process_message(self.prompt, cancel_event=self.cancel_event)
+            if not self.was_cancelled:
                 self.response_ready.emit(self.chat_id, result)
+        except RequestCancelled:
+            pass  # the UI is restored by MainWindow._on_worker_finished
         except Exception as e:
-            if not self._is_cancelled:
+            if not self.was_cancelled:
                 self.error_occurred.emit(self.chat_id, str(e))
 
 
@@ -47,6 +59,10 @@ class TitleWorker(QThread):
         self.ai_engine = ai_engine
         self.chat_id = chat_id
         self.first_message = first_message
+        self.cancel_event = threading.Event()
+
+    def cancel(self):
+        self.cancel_event.set()
 
     def run(self):
         try:
@@ -54,7 +70,8 @@ class TitleWorker(QThread):
                 f"Generate a short title (3 to 5 words max) for a chat that starts with: "
                 f"'{self.first_message}'. Output ONLY the title text, without quotes or punctuation."
             )
-            title = self.ai_engine.process_message(prompt).strip()
+            # save_to_memory=False: the title prompt must not end up in the chat history
+            title = self.ai_engine.process_message(prompt, save_to_memory=False, cancel_event=self.cancel_event).strip()
             clean_title = "".join(c for c in title if c.isalnum() or c in (" ", "_", "-")).strip()
             clean_title = clean_title.replace(" ", "_")
             if clean_title:
@@ -271,6 +288,7 @@ class MainWindow(QMainWindow):
         self.worker = AIWorker(self.ai_engine, self.chat_id, text)
         self.worker.response_ready.connect(self._receive_response)
         self.worker.error_occurred.connect(self._handle_error)
+        self.worker.finished.connect(self._on_worker_finished)
         self.worker.start()
 
     def _generate_auto_title(self, first_message: str):
@@ -296,24 +314,43 @@ class MainWindow(QMainWindow):
         self._reset_input_state()
         self.history_widget.refresh()
 
-    def _handle_error(self, error_message: str):
+    def _handle_error(self, chat_id: str, error_message: str):
         self.spinner.stop()
         self._add_message("System", f"**Error:** {error_message}")
         self._reset_input_state()
 
     def _cancel_request(self):
+        """Ask the running worker to stop. Never blocks the UI thread: the UI is
+        restored in _on_worker_finished once the thread has actually stopped."""
         if self.worker and self.worker.isRunning():
             self.worker.cancel()
-            self.worker.wait()
+            self.cancel_button.setEnabled(False)
+            self.cancel_button.setText("Cancelling...")
+        else:
+            self._reset_input_state()
+
+    def _on_worker_finished(self):
+        """Runs on the GUI thread when the AIWorker thread ends (cancelled or not)."""
+        if self.worker is not None and self.worker.was_cancelled:
             self.spinner.stop()
             self._add_message("System", "*Request cancelled by user.*")
-        self._reset_input_state()
+            self._reset_input_state()
 
     def _reset_input_state(self):
         self.cancel_button.hide()
+        self.cancel_button.setEnabled(True)
+        self.cancel_button.setText("Cancel")
         self.send_button.show()
         self.input_field.setEnabled(True)
         self.input_field.setFocus()
+
+    def closeEvent(self, event):
+        # Don't destroy a QThread that is still running (that aborts the app).
+        for worker in (self.worker, self.title_worker):
+            if worker is not None and worker.isRunning():
+                worker.cancel()
+                worker.wait(3000)
+        super().closeEvent(event)
 
     def _populate_provider_combo(self):
         self.provider_combo.blockSignals(True)

@@ -1,7 +1,12 @@
 """Common interface every model provider implements."""
 
+import threading
 from abc import ABC, abstractmethod
 from typing import Any
+
+
+class RequestCancelled(Exception):
+    """Raised inside a provider loop when the user pressed Cancel."""
 
 
 class BaseProvider(ABC):
@@ -10,6 +15,12 @@ class BaseProvider(ABC):
         self.tool_registry = tool_registry
         self.logger = logger
         self.max_iterations = max_iterations
+        # Set by AIEngine.process_message(); a per-request threading.Event.
+        self.cancel_event: threading.Event | None = None
+
+    def _check_cancelled(self) -> None:
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise RequestCancelled()
 
     @abstractmethod
     def run(self, user_prompt: str, system_instruction: str) -> str:

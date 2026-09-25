@@ -25,7 +25,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.resize(640, 520)
+        self.resize(700, 640)
         self.settings = dict(config.SETTINGS)
         self.providers = [dict(p) for p in self.settings.get("providers", [])]
 
@@ -96,6 +96,12 @@ class SettingsDialog(QDialog):
         self.mouse_control_check.setChecked(self.settings.get("enable_mouse_control", False))
         self.browser_reading_check = QCheckBox("Enable web page reading tool")
         self.browser_reading_check.setChecked(self.settings.get("enable_browser_page_reading", True))
+        self.browser_auto_check = QCheckBox("Enable browser automation (click / type / read pages in the browser)")
+        self.browser_auto_check.setChecked(self.settings.get("enable_browser_automation", True))
+        self.browser_autostart_check = QCheckBox("Auto-start the debug browser (Brave/Chromium) when needed")
+        self.browser_autostart_check.setChecked(self.settings.get("browser_autostart", True))
+        self.submit_confirm_check = QCheckBox("Require confirmation before clicking Apply / Submit buttons")
+        self.submit_confirm_check.setChecked(self.settings.get("require_submit_confirmation", True))
         self.max_iterations_spin = QSpinBox()
         self.max_iterations_spin.setRange(1, 30)
         self.max_iterations_spin.setValue(self.settings.get("max_agent_iterations", 8))
@@ -103,6 +109,9 @@ class SettingsDialog(QDialog):
         toggles.addRow(self.dev_mode_check)
         toggles.addRow(self.mouse_control_check)
         toggles.addRow(self.browser_reading_check)
+        toggles.addRow(self.browser_auto_check)
+        toggles.addRow(self.browser_autostart_check)
+        toggles.addRow(self.submit_confirm_check)
         toggles.addRow("Max reasoning steps per message", self.max_iterations_spin)
         root.addLayout(toggles)
 
@@ -233,6 +242,9 @@ class SettingsDialog(QDialog):
         self.settings["dev_mode"] = self.dev_mode_check.isChecked()
         self.settings["enable_mouse_control"] = self.mouse_control_check.isChecked()
         self.settings["enable_browser_page_reading"] = self.browser_reading_check.isChecked()
+        self.settings["enable_browser_automation"] = self.browser_auto_check.isChecked()
+        self.settings["browser_autostart"] = self.browser_autostart_check.isChecked()
+        self.settings["require_submit_confirmation"] = self.submit_confirm_check.isChecked()
         self.settings["max_agent_iterations"] = self.max_iterations_spin.value()
         config.save_settings(self.settings)
         config.reload_settings()

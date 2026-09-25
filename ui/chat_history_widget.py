@@ -109,22 +109,22 @@ class ChatHistoryWidget(QWidget):
                         f"Could not rename '{chat_id}' to '{sanitized_id}'.\n\n"
                         "A chat with that name may already exist.",
                     )
-            elif chosen_action == delete_action:
-                if chat_id == self.current_chat_id:
-                    QMessageBox.warning(
-                        self, "Cannot Delete",
-                        "Switch to another chat before deleting this one.",
-                    )
-                    return
-                confirm = QMessageBox.question(
-                    self, "Delete Chat",
-                    f"Delete '{chat_id}'? This action cannot be undone.",
+        elif chosen_action == delete_action:
+            if chat_id == self.current_chat_id:
+                QMessageBox.warning(
+                    self, "Cannot Delete",
+                    "Switch to another chat before deleting this one.",
                 )
-                if confirm == QMessageBox.StandardButton.Yes:
-                    if memory.delete_chat(chat_id):
-                        self.refresh()
-                    else:
-                        QMessageBox.warning(
-                            self, "Delete failed",
-                            f"Could not delete '{chat_id}'. The file may have been moved or renamed.",
-                        )
+                return
+            confirm = QMessageBox.question(
+                self, "Delete Chat",
+                f"Delete '{chat_id}'? This action cannot be undone.",
+            )
+            if confirm == QMessageBox.StandardButton.Yes:
+                if memory.delete_chat(chat_id):
+                    self.refresh()
+                else:
+                    QMessageBox.warning(
+                        self, "Delete failed",
+                        f"Could not delete '{chat_id}'. The file may have been moved or renamed.",
+                    )

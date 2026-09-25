@@ -2,21 +2,28 @@
 Browser-related tools.
 
 - get_installed_browsers / open_browser: detect and launch a real browser
-  window (Brave, Chrome, Firefox, Edge, Chromium), same behavior as before
-  but renamed and cleaned up.
+  window (Brave, Chrome, Firefox, Edge, Chromium). When browser automation is
+  enabled (attach mode), Chromium-based browsers are launched with the same
+  debug port and dedicated profile the browser_* tools use, so a page opened
+  here lands in the very same browser the agent can drive.
 - fetch_web_page_text: lets the assistant actually *read* a page's content
   (title + visible text + links) instead of only being able to open it, which
   is what "interacting better with the browser" mainly means for a text
   based assistant. Falls back gracefully if `requests`/`bs4` aren't installed.
 """
 
+import os
 import platform
+import shlex
 import shutil
 import subprocess
 import time
 
 from core import desktop_manager
+from core.tools import browser_automation
 import config
+
+CHROMIUM_FAMILY = ("brave", "chrome", "chromium", "edge", "msedge")
 
 
 def get_installed_browsers() -> dict[str, str]:
@@ -55,10 +62,15 @@ def get_installed_browsers() -> dict[str, str]:
     return browsers
 
 
+def _quote_args(args: list[str]) -> str:
+    return subprocess.list2cmdline(args) if os.name == "nt" else shlex.join(args)
+
+
 def open_browser(url_or_query: str = "", browser: str = "auto") -> str:
     """
     Open an installed browser on a secondary virtual desktop, with an
-    optional URL or search query.
+    optional URL or search query. Chromium-based browsers are opened with the
+    automation debug profile so the browser_* tools can drive the same window.
     """
     system = platform.system().lower()
     available = get_installed_browsers()
@@ -68,11 +80,21 @@ def open_browser(url_or_query: str = "", browser: str = "auto") -> str:
 
     query = browser.lower().strip()
     if query in available:
-        base_cmd = available[query]
+        chosen = query
     elif "brave" in available:
-        base_cmd = available["brave"]
+        chosen = "brave"
     else:
-        base_cmd = list(available.values())[0]
+        chosen = list(available.keys())[0]
+    base_cmd = available[chosen]
+
+    use_debug_profile = (
+        config.SETTINGS.get("enable_browser_automation", True)
+        and config.SETTINGS.get("browser_mode", "attach") == "attach"
+        and chosen in CHROMIUM_FAMILY
+        and not base_cmd.startswith("flatpak")
+    )
+    if use_debug_profile:
+        base_cmd = f"{base_cmd} {_quote_args(browser_automation.debug_flags())}"
 
     target_url = ""
     if url_or_query:
@@ -95,7 +117,8 @@ def open_browser(url_or_query: str = "", browser: str = "auto") -> str:
         time.sleep(1.5)
         desktop_manager.return_to_main_desktop()
 
-        return f"Browser launched successfully (`{final_cmd}`)."
+        note = " (automation profile: the browser_* tools can drive this window)" if use_debug_profile else ""
+        return f"Browser launched successfully (`{final_cmd}`){note}."
     except Exception as e:
         desktop_manager.return_to_main_desktop()
         return f"Error opening browser with command `{final_cmd}`: {e}"
@@ -151,7 +174,7 @@ def fetch_web_page_text(url: str, max_chars: int = 6000) -> str:
 def register(registry) -> None:
     registry.register(
         name="open_browser",
-        description="Open an installed web browser (Brave, Chrome, Firefox, Edge, Chromium), optionally to a URL or search query.",
+        description="Open an installed web browser (Brave, Chrome, Firefox, Edge, Chromium), optionally to a URL or search query. For clicking, typing or reading pages, use the browser_* tools instead.",
         parameters={
             "type": "object",
             "properties": {
@@ -163,7 +186,7 @@ def register(registry) -> None:
     )
     registry.register(
         name="fetch_web_page_text",
-        description="Fetch a web page's title, visible text, and top links without opening a visible browser window. Use this to read page content.",
+        description="Fetch a web page's title, visible text, and top links without opening a visible browser window. Use this only for simple static pages; use browser_read_page for pages that need JavaScript or a login.",
         parameters={
             "type": "object",
             "properties": {

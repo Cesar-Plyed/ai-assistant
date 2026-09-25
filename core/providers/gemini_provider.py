@@ -31,14 +31,17 @@ class GeminiProvider(BaseProvider):
             ),
         )
 
+        self._check_cancelled()
         response = chat.send_message(user_prompt)
         iterations = 0
 
         while response.function_calls and iterations < self.max_iterations:
+            self._check_cancelled()
             for call in response.function_calls:
                 fn_name = call.name
                 fn_args = dict(call.args) if call.args else {}
 
+                self._check_cancelled()
                 self.logger.log("tool_call", {"name": fn_name, "arguments": fn_args})
                 result = self.tool_registry.call(fn_name, fn_args)
                 self.logger.log("tool_result", {"name": fn_name, "result": result})
