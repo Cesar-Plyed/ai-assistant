@@ -1,6 +1,3 @@
-# README.md
-
-```markdown
 # AI Desktop Assistant
 
 A cross-platform (Windows / Linux) PyQt6 desktop application that runs an LLM-powered
@@ -613,4 +610,3 @@ rules, or restrict tool usage.
 - [PyAutoGUI](https://pypi.org/project/PyAutoGUI/) — mouse/keyboard control
 - [requests](https://pypi.org/project/requests/) + [BeautifulSoup](https://pypi.org/project/beautifulsoup4/) — page reading
 - [Markdown](https://pypi.org/project/Markdown/) — chat rendering
-```
