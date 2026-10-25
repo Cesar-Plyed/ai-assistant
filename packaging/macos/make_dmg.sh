@@ -26,6 +26,7 @@ create-dmg \
   --icon "AI Desktop Assistant.app" 200 190 \
   --hide-extension "AI Desktop Assistant.app" \
   --app-drop-link 600 190 \
+  --skip-jenkins \
   "$DMG" "$STAGE"
 
 echo "built $DMG"
