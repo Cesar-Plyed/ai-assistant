@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write   # PyPI trusted publishing
+
+jobs:
+  dist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-extras
+      - name: Verify tag matches version
+        run: |
+          V=$(uv run python -c "from core.version import __version__; print(__version__)")
+          test "v$V" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != version $V"; exit 1; }
+      - run: uv build
+      - name: SBOM (CycloneDX)
+        run: |
+          uv export --format cyclonedx1.5 --no-dev -o dist/sbom.cdx.json || \
+            uv export --no-dev --no-hashes -o dist/requirements-sbom.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: python-dist, path: dist/}
+
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libdbus-1-3
+      - run: uv sync --all-extras
+      - run: uv run python scripts/build.py
+      - name: Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $v = uv run python -c "from core.version import __version__; print(__version__)"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=$v packaging\windows\installer.iss
+      - name: macOS dmg
+        if: runner.os == 'macOS'
+        env:
+          APPLE_SIGN_ID: ${{ secrets.APPLE_SIGN_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          brew install create-dmg
+          V=$(uv run python -c "from core.version import __version__; print(__version__)")
+          bash packaging/macos/make_dmg.sh "$V"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.os }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.dmg
+            dist/*Setup.exe
+            dist/SHA256SUMS-*.txt
+
+  publish:
+    needs: [dist, bundle]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {path: artifacts, merge-multiple: true}
+      - name: Combine checksums
+        run: |
+          cd artifacts
+          cat SHA256SUMS-*.txt > SHA256SUMS.txt 2>/dev/null || true
+          rm -f SHA256SUMS-*.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: artifacts/
+          skip-existing: true

@@ -19,7 +19,7 @@ Settings used (all optional, defaults in parentheses):
 - browser_debug_profile       (~/.job-agent-profile)
 - browser_executable          (auto)   e.g. "brave-browser" or a full path
 - require_submit_confirmation (True)   blocks clicks on apply/submit-looking
-                                       buttons unless the call passes confirmed=true
+                                        buttons unless the call passes confirmed=true
 
 Thread safety: Playwright's sync API must always run on the same thread, and
 this app calls tools from QThread workers. All Playwright work is therefore
@@ -56,7 +56,7 @@ _attached = False
 
 
 # --------------------------------------------------------------------------
-# Debug-browser helpers (also used by browser_tools.open_browser)
+# Debug-browser helpers
 # --------------------------------------------------------------------------
 
 def debug_port() -> int:
@@ -117,9 +117,9 @@ def ensure_debug_browser() -> None:
     os.makedirs(debug_profile_dir(), exist_ok=True)
     kwargs = {}
     if os.name == "nt":
-        kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = 0x00000008 | 0x00000200
     else:
-        kwargs["start_new_session"] = True  # keep the browser alive if the app closes
+        kwargs["start_new_session"] = True
     subprocess.Popen(
         [exe, *debug_flags()],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -146,18 +146,16 @@ def _tool(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         def run():
-            # Same idea as mouse_tools._guard(): re-read the flag on every call so
-            # toggling it off in Settings takes effect immediately, even mid-task.
             if func.__name__ != "browser_close" and not config.SETTINGS.get("enable_browser_automation", True):
                 return (
-                    "Browser automation is disabled. The user can enable it in "
+                    "BLOCKED: browser automation is disabled. The user can enable it in "
                     "Settings > 'Enable browser automation' if they want the assistant "
                     "to click, type and read pages in the browser."
                 )
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                return f"Error in {func.__name__}: {e}"
+                return f"Error: {func.__name__} failed: {type(e).__name__}: {e}"
         return _executor.submit(run).result()
     return wrapper
 
@@ -184,7 +182,7 @@ def _get_page():
             ensure_debug_browser()
             cdp_url = f"http://127.0.0.1:{debug_port()}"
             browser, last_error = None, None
-            for _ in range(3):  # the port can open a moment before CDP is ready
+            for _ in range(3):
                 try:
                     browser = _playwright.chromium.connect_over_cdp(cdp_url)
                     break
@@ -203,7 +201,6 @@ def _get_page():
             _attached = False
 
     if _attached:
-        # Work in our own tab so the user's open tabs are never hijacked.
         _page = _context.new_page()
     else:
         _page = _context.pages[0] if _context.pages else _context.new_page()
@@ -238,16 +235,34 @@ def _resolve_locator(page, selector: str):
 @_tool
 def browser_goto(url: str) -> str:
     """Navigate the agent's tab to a URL."""
+    if not url or not url.strip():
+        return "Error: url must not be empty."
     page = _get_page()
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
-    page.goto(url, wait_until="domcontentloaded", timeout=20000)
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        page.bring_to_front()
+        # Give the page a moment to settle after navigation
+        page.wait_for_load_state("domcontentloaded", timeout=10000)
+    except Exception as e:
+        return f"Error: navigating to '{url}' failed: {type(e).__name__}: {e}"
     return f"Navigated to {page.url} (title: {page.title()})"
+
+
+_PAGE_READING_DISABLED = (
+    "BLOCKED: web page reading is disabled. The user can enable it in "
+    "Settings > 'Enable web page reading'."
+)
 
 
 @_tool
 def browser_read_page(max_chars: int = 6000) -> str:
     """Return the visible text of the current page."""
+    if not config.SETTINGS.get("enable_browser_page_reading", True):
+        return _PAGE_READING_DISABLED
+    if max_chars <= 0:
+        return "Error: max_chars must be a positive integer."
     page = _get_page()
     text = " ".join(page.inner_text("body").split())
     truncated = len(text) > max_chars
@@ -260,6 +275,10 @@ def browser_read_page(max_chars: int = 6000) -> str:
 @_tool
 def browser_list_interactive_elements(limit: int = 40) -> str:
     """List visible buttons, links, inputs, checkboxes and selects on the page."""
+    if not config.SETTINGS.get("enable_browser_page_reading", True):
+        return _PAGE_READING_DISABLED
+    if limit <= 0:
+        return "Error: limit must be a positive integer."
     page = _get_page()
     elements = page.eval_on_selector_all(
         "button, a, input, select, textarea, [role=button], [role=checkbox]",
@@ -280,6 +299,8 @@ def browser_list_interactive_elements(limit: int = 40) -> str:
 @_tool
 def browser_click(selector: str, confirmed: bool = False) -> str:
     """Click an element by CSS selector or visible text."""
+    if not selector or not selector.strip():
+        return "Error: selector must not be empty."
     if (
         config.SETTINGS.get("require_submit_confirmation", True)
         and not confirmed
@@ -297,6 +318,10 @@ def browser_click(selector: str, confirmed: bool = False) -> str:
 @_tool
 def browser_fill(selector: str, text: str) -> str:
     """Type text into an input or textarea."""
+    if not selector or not selector.strip():
+        return "Error: selector must not be empty."
+    if not text:
+        return "Error: text must not be empty."
     page = _get_page()
     _resolve_locator(page, selector).first.fill(text, timeout=8000)
     return f"Filled '{selector}'."
@@ -305,6 +330,8 @@ def browser_fill(selector: str, text: str) -> str:
 @_tool
 def browser_set_checkbox(selector: str, checked: bool = True) -> str:
     """Check or uncheck a checkbox or radio button."""
+    if not selector or not selector.strip():
+        return "Error: selector must not be empty."
     page = _get_page()
     loc = _resolve_locator(page, selector).first
     if checked:
@@ -317,6 +344,10 @@ def browser_set_checkbox(selector: str, checked: bool = True) -> str:
 @_tool
 def browser_select_option(selector: str, value: str) -> str:
     """Select an option in a <select> dropdown by label or value."""
+    if not selector or not selector.strip():
+        return "Error: selector must not be empty."
+    if not value:
+        return "Error: value must not be empty."
     page = _get_page()
     loc = _resolve_locator(page, selector).first
     try:
@@ -329,8 +360,62 @@ def browser_select_option(selector: str, value: str) -> str:
 @_tool
 def browser_press_key(key: str) -> str:
     """Press a key on the focused element (Enter, Tab, Escape...)."""
-    _get_page().keyboard.press(key)
+    if not key or not key.strip():
+        return "Error: key must not be empty."
+    _get_page().keyboard.press(key.strip())
     return f"Pressed '{key}'."
+
+
+@_tool
+def browser_move_mouse(x: int, y: int) -> str:
+    """Move the mouse cursor to a position on the current page."""
+    if x < 0 or y < 0:
+        return "Error: x and y must be non-negative integers."
+    page = _get_page()
+    page.mouse.move(x, y)
+    return f"Mouse moved to ({x}, {y})."
+
+
+@_tool
+def browser_click_at(x: int | None = None, y: int | None = None, button: str = "left") -> str:
+    """Click at a page position or at the current mouse position."""
+    if x is not None and y is not None:
+        if x < 0 or y < 0:
+            return "Error: x and y must be non-negative integers."
+        page = _get_page()
+        page.mouse.click(x, y, button=button)
+        return f"Clicked ({button}) at ({x}, {y})."
+    if button not in ("left", "right", "middle"):
+        return "Error: button must be 'left', 'right', or 'middle'."
+    page = _get_page()
+    page.mouse.click(button=button)
+    return f"Clicked ({button}) at the current mouse position."
+
+
+@_tool
+def browser_scroll(direction: str = "down", amount: int = 3) -> str:
+    """Scroll the page up or down by a number of ticks."""
+    if direction not in ("up", "down"):
+        return "Error: direction must be 'up' or 'down'."
+    if amount <= 0:
+        return "Error: amount must be a positive integer."
+    page = _get_page()
+    delta = amount * 100
+    if direction == "down":
+        page.mouse.wheel(0, delta)
+    else:
+        page.mouse.wheel(0, -delta)
+    return f"Scrolled {direction} by {amount} ticks."
+
+
+@_tool
+def browser_type_text(text: str) -> str:
+    """Type text at the current focus position in the page."""
+    if not text:
+        return "Error: text must not be empty."
+    page = _get_page()
+    page.keyboard.type(text)
+    return f"Typed {len(text)} characters."
 
 
 @_tool
@@ -343,6 +428,8 @@ def browser_close() -> str:
                 _page.close()
         elif _context is not None:
             _context.close()
+    except Exception as e:
+        return f"Error: closing browser session failed: {type(e).__name__}: {e}"
     finally:
         if _playwright is not None:
             _playwright.stop()
@@ -358,43 +445,56 @@ def browser_close() -> str:
 def register(registry) -> None:
     registry.register(
         name="browser_goto",
-        description="Navigate the automation browser tab to a URL.",
+        description=(
+            "Navigate the automation browser tab to a URL. Use this to open a website, "
+            "follow a link to a specific page, or start a new browsing session. The URL "
+            "automatically gets https:// prepended if no scheme is specified."
+        ),
         parameters={
             "type": "object",
-            "properties": {"url": {"type": "string", "description": "URL to open."}},
+            "properties": {"url": {"type": "string", "description": "URL to open (e.g. 'https://example.com' or just 'example.com')."}},
             "required": ["url"],
         },
         func=browser_goto,
     )
     registry.register(
         name="browser_read_page",
-        description="Read the visible text of the current page.",
+        description=(
+            "Read the visible text of the current page. Use this to extract information "
+            "from web pages, read article content, check form values, or understand what "
+            "is currently displayed. Returns the page URL, title, and text content."
+        ),
         parameters={
             "type": "object",
-            "properties": {"max_chars": {"type": "integer", "description": "Max characters to return."}},
+            "properties": {"max_chars": {"type": "integer", "description": "Maximum characters of page text to return (default 6000). Text beyond this is truncated."}},
         },
         func=browser_read_page,
     )
     registry.register(
         name="browser_list_interactive_elements",
-        description="List visible buttons, links, inputs, checkboxes and selects on the current page.",
+        description=(
+            "List visible buttons, links, inputs, checkboxes and selects on the current page. "
+            "Use this to discover what actions are available on a page before clicking or filling. "
+            "Each element is shown with its index, tag type, visible text, and identifier."
+        ),
         parameters={
             "type": "object",
-            "properties": {"limit": {"type": "integer", "description": "Max elements to list."}},
+            "properties": {"limit": {"type": "integer", "description": "Maximum number of elements to list (default 40)."}},
         },
         func=browser_list_interactive_elements,
     )
     registry.register(
         name="browser_click",
         description=(
-            "Click an element by CSS selector or visible text. Submit/apply-type buttons are "
-            "blocked until the user confirms; then pass confirmed=true."
+            "Click an element by CSS selector or visible text. Use this to click buttons, "
+            "links, tabs, or any clickable element on the page. Submit/apply-type buttons "
+            "are blocked until the user confirms; then pass confirmed=true."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "selector": {"type": "string", "description": "CSS selector or visible text."},
-                "confirmed": {"type": "boolean", "description": "Set true only after the user explicitly approved this click."},
+                "selector": {"type": "string", "description": "CSS selector (e.g. '#submit-btn') or visible text (e.g. 'Sign In')."},
+                "confirmed": {"type": "boolean", "description": "Set true only after the user explicitly approved this click on a submit/apply action."},
             },
             "required": ["selector"],
         },
@@ -402,12 +502,16 @@ def register(registry) -> None:
     )
     registry.register(
         name="browser_fill",
-        description="Type text into an input/textarea identified by CSS selector, label or placeholder.",
+        description=(
+            "Type text into an input or textarea identified by CSS selector, label, or "
+            "placeholder. Use this to fill in search boxes, login forms, or any text field. "
+            "The existing content is replaced."
+        ),
         parameters={
             "type": "object",
             "properties": {
-                "selector": {"type": "string", "description": "CSS selector, label or placeholder text."},
-                "text": {"type": "string", "description": "Text to type."},
+                "selector": {"type": "string", "description": "CSS selector, label text, or placeholder of the input field."},
+                "text": {"type": "string", "description": "Text to type into the field."},
             },
             "required": ["selector", "text"],
         },
@@ -415,12 +519,15 @@ def register(registry) -> None:
     )
     registry.register(
         name="browser_set_checkbox",
-        description="Check or uncheck a checkbox/radio button identified by selector or label text.",
+        description=(
+            "Check or uncheck a checkbox or radio button. Use this to toggle options in "
+            "forms, agree to terms, or select/deselect items in a list."
+        ),
         parameters={
             "type": "object",
             "properties": {
-                "selector": {"type": "string", "description": "CSS selector or label text."},
-                "checked": {"type": "boolean", "description": "True to check, false to uncheck."},
+                "selector": {"type": "string", "description": "CSS selector or label text of the checkbox/radio button."},
+                "checked": {"type": "boolean", "description": "True to check, false to uncheck. Default: true."},
             },
             "required": ["selector"],
         },
@@ -428,12 +535,16 @@ def register(registry) -> None:
     )
     registry.register(
         name="browser_select_option",
-        description="Select an option in a dropdown by visible label or value.",
+        description=(
+            "Select an option in a <select> dropdown by visible label or value. Use this "
+            "to choose from dropdown menus like country selectors, category filters, or "
+            "sort-order pickers."
+        ),
         parameters={
             "type": "object",
             "properties": {
-                "selector": {"type": "string", "description": "CSS selector or label of the <select>."},
-                "value": {"type": "string", "description": "Option label or value."},
+                "selector": {"type": "string", "description": "CSS selector or label of the <select> element."},
+                "value": {"type": "string", "description": "Option label text or value attribute to select."},
             },
             "required": ["selector", "value"],
         },
@@ -441,17 +552,86 @@ def register(registry) -> None:
     )
     registry.register(
         name="browser_press_key",
-        description="Press a keyboard key on the focused element (Enter, Tab, Escape).",
+        description=(
+            "Press a keyboard key on the currently focused element. Use this to submit "
+            "forms (Enter), move between fields (Tab), cancel dialogs (Escape), or "
+            "trigger keyboard shortcuts."
+        ),
         parameters={
             "type": "object",
-            "properties": {"key": {"type": "string", "description": "Key name, e.g. 'Enter'."}},
+            "properties": {"key": {"type": "string", "description": "Key name (e.g. 'Enter', 'Tab', 'Escape', 'ArrowDown')."}},
             "required": ["key"],
         },
         func=browser_press_key,
     )
     registry.register(
+        name="browser_move_mouse",
+        description=(
+            "Move the mouse cursor to a specific position on the current page. "
+            "Coordinates are in pixels relative to the top-left of the viewport."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer", "description": "Horizontal position in pixels from the left edge."},
+                "y": {"type": "integer", "description": "Vertical position in pixels from the top edge."},
+            },
+            "required": ["x", "y"],
+        },
+        func=browser_move_mouse,
+    )
+    registry.register(
+        name="browser_click_at",
+        description=(
+            "Click at a specific page position or at the current mouse position. "
+            "Use this for precise clicking when a CSS selector is not available."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer", "description": "Horizontal position in pixels. Omit to click at current mouse position."},
+                "y": {"type": "integer", "description": "Vertical position in pixels. Omit to click at current mouse position."},
+                "button": {"type": "string", "enum": ["left", "right", "middle"], "description": "Mouse button to click."},
+            },
+        },
+        func=browser_click_at,
+    )
+    registry.register(
+        name="browser_scroll",
+        description=(
+            "Scroll the page up or down. Use this to reveal content that is "
+            "below or above the current viewport."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "direction": {"type": "string", "enum": ["up", "down"], "description": "Direction to scroll."},
+                "amount": {"type": "integer", "description": "Number of scroll ticks (default 3, each ~100px)."},
+            },
+            "required": ["direction"],
+        },
+        func=browser_scroll,
+    )
+    registry.register(
+        name="browser_type_text",
+        description=(
+            "Type text at the current keyboard focus in the page. Use this after "
+            "clicking an input field to type into it."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {"text": {"type": "string", "description": "Text to type."}},
+            "required": ["text"],
+        },
+        func=browser_type_text,
+    )
+    registry.register(
         name="browser_close",
-        description="Close the agent's browser tab/session. The browser profile and logins persist.",
+        description=(
+            "Close the agent's browser tab and session. The browser profile, cookies, and "
+            "login sessions persist for future use. In attach mode, the underlying browser "
+            "window stays open; in launch mode, the Playwright-managed browser is shut down."
+        ),
         parameters={"type": "object", "properties": {}},
         func=browser_close,
     )

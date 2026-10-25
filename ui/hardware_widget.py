@@ -1,18 +1,29 @@
 # ui/hardware_widget.py
-"""Live hardware monitor panel (CPU / RAM / Disk / GPU), works on Linux and Windows."""
+"""Live hardware monitor panel (CPU / RAM / GPU), works on Linux, Windows and macOS."""
 
-from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QGroupBox
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
 
 from core import hardware_monitor
 
+from ui import theme
+
+
+def _bar_color(percent: int) -> str:
+    """Return a severity-based color for the progress bar fill."""
+    t = theme.tokens()
+    if percent >= 90:
+        return t["error"]
+    if percent >= 70:
+        return t["warning"]
+    return t["success"]
+
 
 def _section_label(text: str) -> QLabel:
-    """Small section heading (CPU / RAM / GPU) with an explicit color, since
-    an unstyled QLabel falls back to Qt's default palette text color, which
-    is nearly invisible against a dark background."""
+    """Small muted section heading (CPU / RAM / GPU)."""
     label = QLabel(text)
-    label.setStyleSheet("color: #9cdcfe; font-weight: bold; font-size: 12px; margin-top: 4px;")
+    label.setProperty("muted", True)
+    label.setStyleSheet("font-weight: 600; font-size: 11px; margin-top: 8px;")
     return label
 
 
@@ -20,29 +31,35 @@ def _bar(max_value: int = 100) -> QProgressBar:
     bar = QProgressBar()
     bar.setRange(0, max_value)
     bar.setTextVisible(True)
-    bar.setStyleSheet("""
-        QProgressBar { background-color: #2b2b2b; border: 1px solid #3c3c3c; border-radius: 4px; text-align: center; color: #ffffff; }
-        QProgressBar::chunk { background-color: #0e639c; border-radius: 3px; }
-    """)
     return bar
+
+
+def _update_bar(bar: QProgressBar, percent: int):
+    """Update value; only restyle the chunk when the severity colour changes."""
+    bar.setValue(percent)
+    color = _bar_color(percent)
+    if bar.property("_chunk_color") != color:
+        bar.setProperty("_chunk_color", color)
+        bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {color}; border-radius: 4px; }}")
 
 
 class HardwareWidget(QWidget):
     def __init__(self, parent=None, poll_interval_ms: int = 2000):
         super().__init__(parent)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(4)
 
         title = QLabel("Hardware Monitor")
-        title.setStyleSheet("font-weight: bold; color: #ffffff;")
+        title.setStyleSheet("font-weight: 600; font-size: 14px; margin-bottom: 8px;")
         layout.addWidget(title)
 
         self.cpu_bar = _bar()
         self.ram_bar = _bar()
         self.gpu_bar = _bar()
-        self.disk_labels: list[QLabel] = []
         self.gpu_label = QLabel("GPU: not detected")
-        self.gpu_label.setStyleSheet("color: #aaaaaa; font-size: 11px;")
+        self.gpu_label.setProperty("muted", True)
+        self.gpu_label.setStyleSheet("font-size: 11px; margin-top: 4px;")
 
         layout.addWidget(_section_label("CPU"))
         layout.addWidget(self.cpu_bar)
@@ -52,15 +69,6 @@ class HardwareWidget(QWidget):
         layout.addWidget(self.gpu_bar)
         layout.addWidget(self.gpu_label)
 
-        self.disk_group = QGroupBox("Disks")
-        self.disk_group.setStyleSheet(
-            "QGroupBox { color: #9cdcfe; font-weight: bold; border: 1px solid #3c3c3c; "
-            "border-radius: 4px; margin-top: 10px; padding-top: 12px; } "
-            "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }"
-        )
-        self.disk_layout = QVBoxLayout()
-        self.disk_group.setLayout(self.disk_layout)
-        layout.addWidget(self.disk_group)
         layout.addStretch()
 
         self.timer = QTimer(self)
@@ -77,32 +85,20 @@ class HardwareWidget(QWidget):
         cpu = snapshot["cpu"]
         mem = snapshot["memory"]
 
-        self.cpu_bar.setValue(int(cpu["percent"]))
+        _update_bar(self.cpu_bar, int(cpu["percent"]))
         self.cpu_bar.setFormat(f"{cpu['percent']:.0f}%  ({cpu['cores_logical']} threads)")
 
-        self.ram_bar.setValue(int(mem["percent"]))
+        _update_bar(self.ram_bar, int(mem["percent"]))
         self.ram_bar.setFormat(f"{mem['used_gb']:.1f} / {mem['total_gb']:.1f} GB")
 
         if snapshot["gpus"]:
             gpu = snapshot["gpus"][0]
-            self.gpu_bar.setValue(int(gpu["utilization_percent"]))
+            _update_bar(self.gpu_bar, int(gpu["utilization_percent"]))
             self.gpu_bar.setFormat(f"{gpu['utilization_percent']:.0f}%")
             self.gpu_label.setText(
-                f"{gpu['name']} - {gpu['memory_used_mb']:.0f}/{gpu['memory_total_mb']:.0f} MB - {gpu['temperature_c']:.0f}C"
+                f"{gpu['name']} — {gpu['memory_used_mb']:.0f}/{gpu['memory_total_mb']:.0f} MB — {gpu['temperature_c']:.0f}°C"
             )
         else:
             self.gpu_bar.setValue(0)
             self.gpu_bar.setFormat("n/a")
             self.gpu_label.setText("GPU: no supported monitoring tool detected")
-
-        # Rebuild disk rows (cheap: at most a handful of mount points).
-        while self.disk_layout.count():
-            item = self.disk_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        for disk in snapshot["disks"]:
-            bar = _bar()
-            bar.setValue(int(disk["percent"]))
-            bar.setFormat(f"{disk['mountpoint']}: {disk['used_gb']:.0f}/{disk['total_gb']:.0f} GB")
-            self.disk_layout.addWidget(bar)

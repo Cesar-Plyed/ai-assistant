@@ -150,7 +150,7 @@ activemq-data/
 # Environments
 .env
 .envrc
-.venv
+.venv/
 env/
 venv/
 ENV/
@@ -221,6 +221,9 @@ __marimo__/
 # App Generated Files
 settings.json
 logs/*
-logs_chats/*
 data/*
 workspace/*
+
+# Local agent notes (not committed)
+AGENTS.md
+MEMORY.md

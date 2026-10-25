@@ -5,9 +5,9 @@ Icons are plain inline SVG strings rendered to QIcon at runtime via
 QtSvg/QPainter, so there are no external image assets to ship or manage.
 """
 
-from PyQt6.QtCore import QByteArray, QSize, Qt
-from PyQt6.QtGui import QIcon, QPixmap, QPainter
-from PyQt6.QtSvg import QSvgRenderer
+from PySide6.QtCore import QByteArray, QSize, Qt
+from PySide6.QtGui import QIcon, QPixmap, QPainter
+from PySide6.QtSvg import QSvgRenderer
 
 _STROKE = "#d4d4d4"
 

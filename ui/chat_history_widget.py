@@ -1,6 +1,6 @@
 from datetime import datetime
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLabel, QMenu, QInputDialog, QMessageBox,
 )
@@ -9,23 +9,27 @@ from core import memory
 from ui.icons import get_icon
 
 
+
 class ChatHistoryWidget(QWidget):
     """Sidebar widget to list, switch, create, rename, and delete chat sessions."""
-    chat_selected = pyqtSignal(str)
+    chat_selected = Signal(str)
 
     def __init__(self, current_chat_id: str, parent=None):
         super().__init__(parent)
         self.current_chat_id = current_chat_id
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
         header = QHBoxLayout()
+        header.setSpacing(8)
         title = QLabel("Chat History")
-        title.setStyleSheet("font-weight: bold; color: #ffffff;")
+        title.setStyleSheet("font-weight: 600; font-size: 14px;")
         self.new_chat_button = QPushButton()
         self.new_chat_button.setIcon(get_icon("plus"))
         self.new_chat_button.setToolTip("Start a new chat")
+        self.new_chat_button.setProperty("secondary", True)
         self.new_chat_button.clicked.connect(self._create_new_chat)
         header.addWidget(title)
         header.addStretch()
@@ -47,16 +51,16 @@ class ChatHistoryWidget(QWidget):
 
         known_ids = {c["id"] for c in chats}
         if self.current_chat_id not in known_ids:
-            chats.insert(0, {"id": self.current_chat_id, "message_count": 0, "last_updated": None})
+            chats.insert(0, {"id": self.current_chat_id, "title": None, "message_count": 0, "last_updated": None})
 
         for chat in chats:
-            label = chat["id"]
-            if chat["message_count"]:
-                label
+            label = chat.get("title") or chat["id"]
+            if chat.get("message_count"):
+                label = f"{label}  ({chat['message_count']} messages)"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, chat["id"])
             self.chat_list.addItem(item)
-            
+
             if chat["id"] == self.current_chat_id:
                 item.setSelected(True)
                 font = item.font()
@@ -95,19 +99,20 @@ class ChatHistoryWidget(QWidget):
         chosen_action = menu.exec(self.chat_list.mapToGlobal(position))
 
         if chosen_action == rename_action:
-            new_id, ok = QInputDialog.getText(self, "Rename Chat", "New chat name:", text=chat_id)
-            if ok and new_id.strip() and new_id.strip() != chat_id:
-                sanitized_id = new_id.strip().replace(" ", "_")
-                if memory.rename_chat(chat_id, sanitized_id):
-                    if chat_id == self.current_chat_id:
-                        self.current_chat_id = sanitized_id
-                        self.chat_selected.emit(sanitized_id)
+            current_title = memory.get_chat_title(chat_id) or chat_id
+            new_title, ok = QInputDialog.getText(
+                self, "Rename Chat", "New chat title:", text=current_title
+            )
+            if ok and new_title.strip() and new_title.strip() != current_title:
+                if memory.set_chat_title(chat_id, new_title.strip()):
                     self.refresh()
+                    if chat_id == self.current_chat_id:
+                        # Refresh the window title without changing the chat id.
+                        self.chat_selected.emit(chat_id)
                 else:
                     QMessageBox.warning(
                         self, "Rename failed",
-                        f"Could not rename '{chat_id}' to '{sanitized_id}'.\n\n"
-                        "A chat with that name may already exist.",
+                        f"Could not rename '{chat_id}'. The chat may have been deleted.",
                     )
         elif chosen_action == delete_action:
             if chat_id == self.current_chat_id:

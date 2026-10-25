@@ -1,7 +1,7 @@
 """
 Cross-platform hardware monitoring for Linux and Windows.
 
-Uses psutil for CPU/RAM/disk/network, which works the same way on both
+Uses psutil for CPU/RAM/network, which works the same way on both
 platforms. GPU stats are best-effort: NVIDIA GPUs are read via `nvidia-smi`
 (present on both Linux and Windows once the driver is installed); if no
 supported GPU tool is found, the GPU section is simply omitted instead of
@@ -123,9 +123,6 @@ def format_snapshot_as_text(snapshot: dict[str, Any] | None = None) -> str:
         f"({cpu['cores_physical']} physical / {cpu['cores_logical']} logical cores)",
         f"- RAM: {mem['used_gb']} GB / {mem['total_gb']} GB ({mem['percent']}%)",
     ]
-
-    for disk in snapshot["disks"]:
-        lines.append(f"- Disk {disk['mountpoint']}: {disk['used_gb']} GB / {disk['total_gb']} GB ({disk['percent']}%)")
 
     if snapshot["gpus"]:
         for gpu in snapshot["gpus"]:

@@ -14,7 +14,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from config import DEV_LOG_DIR
 
@@ -24,8 +24,16 @@ EVENT_TYPES = (
     "model_response",
     "tool_call",
     "tool_result",
+    "tool_error",
     "final_answer",
     "error",
+    "tool_effect",
+    "delivered",
+    "iteration_limit",
+    "reasoning_content",
+    "mcp_connect",
+    "skills_activated",
+    "attachments_skipped",
 )
 
 
@@ -33,7 +41,7 @@ class DevLogger(QObject):
     """Thread-safe event bus. Safe to call .log() from a worker QThread;
     the event_logged signal is queued back to the GUI thread automatically."""
 
-    event_logged = pyqtSignal(dict)
+    event_logged = Signal(dict)
 
     def __init__(self, session_id: str = "session"):
         super().__init__()
