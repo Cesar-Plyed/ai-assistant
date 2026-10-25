@@ -107,8 +107,12 @@ More docs: [ARCHITECTURE](docs/ARCHITECTURE.md) · [TOOL_CALLING](docs/TOOL_CALL
 **Three prompts that show the whole loop** (use any model with native tool calling):
 
 1. `List the Python files in this repo, read docs/ARCHITECTURE.md, and explain the agent loop in five bullets.`
-2. `Run the test suite, find the first failure, fix it, and re-run the tests.`
+2. `Run "uv run pytest tests/test_tool_text.py tests/test_provider_factory.py -q", then read core/providers/base_provider.py and explain how tool errors are handled.`
 3. `Open news.ycombinator.com and summarize the top three stories.`
+
+The shell tool defaults to a 30-second timeout. The full 185-test suite takes
+roughly 80 seconds, so pass `timeout_seconds=180` when you ask for it (or run it
+from a terminal).
 
 Turn on **View → Dev Mode** while it works: every model request, tool call, tool
 result and error appears as a color-coded line and is persisted to `logs/`. The
