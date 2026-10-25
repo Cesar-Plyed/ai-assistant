@@ -161,7 +161,7 @@ and a system instruction, and gets back a final string.
 ├── config.py                     # settings + defaults + API-key resolution
 ├── pyproject.toml                # deps + tool config (uv / setuptools)
 ├── uv.lock                       # locked dependency graph
-├── .python-version               # pinned interpreter for uv (3.14)
+├── .python-version               # pinned interpreter for uv (3.13)
 ├── settings.json                 # created on first run
 ├── data/
 │   └── chats/                    # per-chat JSON history
@@ -169,6 +169,9 @@ and a system instruction, and gets back a final string.
 ├── workspace/
 │   └── uploads/                  # files attached from the UI
 ├── skills/                       # pluggable skill folders
+├── packaging/                    # PyInstaller spec + Windows/macOS installers
+├── docs/                         # architecture, ADRs, provider/MCP/skills docs
+├── scripts/                      # build + skill validation
 └── core/
     ├── ai_engine.py              # orchestrator
     ├── memory.py                 # chat persistence
@@ -205,7 +208,7 @@ and a system instruction, and gets back a final string.
 ## Installation
 
 Requires **Python 3.10+** (uses `X | None` union syntax in tool signatures).
-`.python-version` pins 3.14, which uv installs automatically if it's missing.
+`.python-version` pins 3.13, which uv installs automatically if it's missing.
 
 ```bash
 git clone <your-repo-url>
