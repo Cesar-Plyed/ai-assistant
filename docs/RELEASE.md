@@ -44,7 +44,7 @@ aborts otherwise.
 |---|---|
 | `dist` | `uv build` wheel + sdist, CycloneDX SBOM (`dist/sbom.cdx.json`, with a requirements fallback), uploaded as `python-dist`. |
 | `bundle` | Per-OS PyInstaller bundle via `uv run python scripts/build.py`: Linux `.tar.gz`, Windows `.zip` plus Inno Setup `Setup.exe`, macOS `.dmg` via `create-dmg`, each with `SHA256SUMS-<platform>.txt`. |
-| `publish` | Downloads all artifacts, combines the checksums into `SHA256SUMS.txt`, creates the GitHub release with generated notes, and publishes the wheel/sdist to PyPI using trusted publishing (`id-token: write`). Configure the trusted publisher once on pypi.org. |
+| `publish` | Downloads all artifacts, combines the checksums into `SHA256SUMS.txt`, creates the GitHub release with generated notes, and optionally publishes the wheel/sdist to PyPI using trusted publishing (`id-token: write`). PyPI is opt-in: set the repository variable `PUBLISH_TO_PYPI=true` and configure the trusted publisher once on pypi.org. |
 
 `scripts/build.py` builds `dist/AI-Desktop-Assistant/` (or
 `dist/AI Desktop Assistant.app` on macOS), archives it, and writes a checksum

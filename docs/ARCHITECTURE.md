@@ -732,7 +732,7 @@ skills are copied into the writable `skills/` directory once.
 
 Release artifacts are built by `scripts/build.py` (PyInstaller onedir, archive,
 `SHA256SUMS`) and `.github/workflows/release.yml` (wheel/sdist, CycloneDX SBOM,
-Windows installer, macOS DMG, GitHub release, PyPI trusted publishing).
+Windows installer, macOS DMG, GitHub release, optional PyPI trusted publishing).
 Chromium is not bundled; run `playwright install chromium` after installing.
 
 ---

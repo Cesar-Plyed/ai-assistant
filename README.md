@@ -94,9 +94,10 @@ uv run python main.py
 uv run playwright install chromium   # only for browser automation
 ```
 
-Packaged builds (Linux `.tar.gz`, Windows `.zip`/Setup.exe, macOS `.dmg`) are published on
-the Releases page; see [docs/RELEASE.md](docs/RELEASE.md). On unsigned macOS builds use
-right-click → Open the first time.
+Build a local bundle with `uv run python scripts/build.py` (Linux `.tar.gz`,
+Windows `.zip`/Setup.exe, macOS `.dmg`). The tag workflow
+(`.github/workflows/release.yml`) produces the same artifacts for all three
+platforms. On unsigned macOS builds use right-click → Open the first time.
 
 More docs: [ARCHITECTURE](docs/ARCHITECTURE.md) · [TOOL_CALLING](docs/TOOL_CALLING.md) ·
 [DESIGN_SYSTEM](docs/DESIGN_SYSTEM.md) · [SECURITY](docs/SECURITY.md) · [CONTRIBUTING](CONTRIBUTING.md).
