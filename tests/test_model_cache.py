@@ -19,7 +19,7 @@ def test_list_models_uses_ttl_cache(tmp_path, monkeypatch):
     assert len(calls) == 1
     assert model_catalog.list_models(provider, force_refresh=True) == ["a", "b"]
     assert len(calls) == 2
-    data = json.loads((tmp_path / "data" / "model_cache.json").read_text())
+    data = json.loads((tmp_path / "data" / "model_cache.json").read_text(encoding="utf-8"))
     assert next(iter(data.values()))["models"] == ["a", "b"]
 
 

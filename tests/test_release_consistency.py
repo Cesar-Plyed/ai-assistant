@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_version_matches_pyproject_and_changelog():
-    data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert data["project"]["version"] == __version__
-    assert f"## [{__version__}]" in (ROOT / "CHANGELOG.md").read_text()
+    assert f"## [{__version__}]" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
 
 def test_docs_exist():

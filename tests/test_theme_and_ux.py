@@ -34,7 +34,7 @@ def test_resolve_theme_and_apply(qtbot):
 def test_no_local_stylesheet_constants_left():
     import pathlib
     for f in pathlib.Path("ui").glob("*.py"):
-        text = f.read_text()
+        text = f.read_text(encoding="utf-8")
         assert "Tokyo Night palette" not in text, f
         assert "#1a1b26" not in text or f.name == "theme.py", f
 
